@@ -38,9 +38,16 @@ optimise_bp = Blueprint('optimise', __name__)
 
 @optimise_bp.route('/optimise', methods=['POST'])
 def optimise():
-    # TODO: Replace with your implementation (YOUR TASK #3)
-    return jsonify({}), 200
+    data = request.get_json()
+    match_ids = data.get('matchIds', [])
 
+    matches = Match.query.filter(Match.id.in_(match_ids)).all()
+    match_dicts = [match.to_dict() for match in matches]
+
+    strategy = NearestNeighbourStrategy()
+    route = strategy.optimise(match_dicts)
+
+    return jsonify(route), 200
 
 # ============================================================
 #  POST /api/route/budget — Calculate trip costs and check budget
