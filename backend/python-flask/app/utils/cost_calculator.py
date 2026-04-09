@@ -33,13 +33,101 @@ class CostCalculator:
 
     REQUIRED_COUNTRIES = ['USA', 'Mexico', 'Canada']
 
-    def calculate(
-        self,
-        matches: list,
-        budget: float,
-        origin_city_id: str,
-        flight_prices: list
-    ) -> BudgetResult:
+   def calculate(
+    self,
+    matches: list,
+    budget: float,
+    origin_city_id: str,
+    flight_prices: list
+) -> BudgetResult:
+
+    if not matches:
+        return BudgetResult(
+            feasible=False,
+            route=None,
+            costBreakdown=CostBreakdown(flights=0, accommodation=0, tickets=0, total=0),
+            countriesVisited=[],
+            missingCountries=self.REQUIRED_COUNTRIES,
+            minimumBudgetRequired=0,
+            suggestions=['No matches selected.']
+        )
+
+    # Sort matches by kickoff date
+    sorted_matches = sorted(matches, key=lambda m: m['kickoff'])
+
+    # 1. Ticket costs
+    ticket_cost = sum(m['ticketPrice'] for m in sorted_matches)
+
+    # 2. Flight costs
+    flight_cost = 0
+
+    # Origin to first match city
+    first_city_id = sorted_matches[0]['city']['id']
+    flight_cost += self.get_flight_price(origin_city_id, first_city_id, flight_prices)
+
+    # Between consecutive match cities
+    for i in range(1, len(sorted_matches)):
+        from_city_id = sorted_matches[i - 1]['city']['id']
+        to_city_id = sorted_matches[i]['city']['id']
+        flight_cost += self.get_flight_price(from_city_id, to_city_id, flight_prices)
+
+    # 3. Accommodation costs
+    accommodation_cost = 0
+
+    for i in range(len(sorted_matches)):
+        city = sorted_matches[i]['city']
+        rate = city['accommodationPerNight']
+
+        if i == 0:
+            # Nights from arrival (kickoff date) until next match
+            if len(sorted_matches) > 1:
+                nights = self.calculate_nights_between(
+                    sorted_matches[i]['kickoff'],
+                    sorted_matches[i + 1]['kickoff']
+                )
+            else:
+                nights = 1  # At least one night for a single match
+        elif i == len(sorted_matches) - 1:
+            nights = 1  # At least one night for the final stop
+        else:
+            nights = self.calculate_nights_between(
+                sorted_matches[i]['kickoff'],
+                sorted_matches[i + 1]['kickoff']
+            )
+
+        accommodation_cost += nights * rate
+
+    # 4. Build cost breakdown
+    total = ticket_cost + flight_cost + accommodation_cost
+    cost_breakdown = CostBreakdown(
+        flights=round(flight_cost, 2),
+        accommodation=round(accommodation_cost, 2),
+        tickets=round(ticket_cost, 2),
+        total=round(total, 2)
+    )
+
+    # 5. Check country constraint
+    countries_visited = self.get_countries_visited(sorted_matches)
+    missing_countries = self.get_missing_countries(countries_visited)
+
+    # 6. Check feasibility
+    feasible = total <= budget and len(missing_countries) == 0
+    minimum_budget_required = round(total, 2) if not feasible else None
+
+    # 7. Generate suggestions if not feasible
+    suggestions = []
+    if not feasible:
+        suggestions = self.generate_suggestions(sorted_matches, total, budget)
+
+    return BudgetResult(
+        feasible=feasible,
+        route=None,
+        costBreakdown=cost_breakdown,
+        countriesVisited=countries_visited,
+        missingCountries=missing_countries,
+        minimumBudgetRequired=minimum_budget_required,
+        suggestions=suggestions
+    )
         """
         Calculate the total cost of a trip and check if it's within budget.
 

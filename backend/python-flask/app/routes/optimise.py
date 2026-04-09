@@ -82,8 +82,29 @@ def optimise():
 # ============================================================
 @optimise_bp.route('/budget', methods=['POST'])
 def budget_optimise():
-    # TODO: Replace with your implementation (YOUR TASK #5)
-    return jsonify({}), 200
+    data = request.get_json()
+    budget = data.get('budget')
+    match_ids = data.get('matchIds', [])
+    origin_city_id = data.get('originCityId')
+
+    matches = Match.query.filter(Match.id.in_(match_ids)).all()
+    match_dicts = [match.to_dict() for match in matches]
+
+    # Fetch all flight prices and convert to dicts
+    flight_prices_raw = FlightPrice.query.all()
+    flight_prices = [
+        {
+            'from_city_id': fp.origin_city_id,
+            'to_city_id': fp.destination_city_id,
+            'price': fp.price_usd
+        }
+        for fp in flight_prices_raw
+    ]
+
+    calculator = CostCalculator()
+    result = calculator.calculate(match_dicts, budget, origin_city_id, flight_prices)
+
+    return jsonify(result), 200
 
 
 # ============================================================
